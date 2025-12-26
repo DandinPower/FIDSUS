@@ -100,6 +100,9 @@ class FIDSUS(Server):
 
 
     def train_head(self):
+        if len(self.uploaded_protos) < 2:
+            print(f"Skip training the global head, because the number of aggregated classes={len(self.uploaded_protos)} is less than two and will cause a BN_Linear crash.")
+            return
         proto_loader = DataLoader(self.uploaded_protos, self.batch_size, drop_last=False, shuffle=True)
         for p, y in proto_loader:
             out = self.head(p)

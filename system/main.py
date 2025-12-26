@@ -41,7 +41,15 @@ def run(args):
 
         if model_str == "1dcnn":
             args.model = CNN1D(hidden_dim=emb_dim, num_classes=args.num_classes).to(args.device)
-
+        elif model_str == "2dcnn":
+            args.model = CNN2D(hidden_dim=emb_dim, num_classes=args.num_classes).to(args.device)
+        elif model_str == "microvit":
+            args.model = MicroViT(
+                in_chans=1,
+                num_classes=args.num_classes,
+                distillation=False,
+                patch_size=4,        # recommended for 28x28
+            ).to(args.device)
         else:
             raise NotImplementedError
 
