@@ -1,73 +1,126 @@
 # FIDSUS
 
-The source code is for the paper: FIDSUS: Federated Intrusion Detection for Securing UAV Swarms
+This repository contains a federated learning (FL) codebase with multiple algorithms and multiple model backbones. The main entrypoint is `main.py`, and `run.sh` provides a simple way to sweep over (algorithm, dataset, client_activity_rate). A companion script, `visualizer.py`, parses stdout logs and generates comparison figures.
 
-## Overview
+## Requirements
 
-The dynamic nature of UAV swarms, characterized by communication instability, heterogeneous nodes, and frequent topology changes, makes them vulnerable to network attacks. To address these challenges, we propose FIDSUS, a federated learning-based intrusion detection system. FIDSUS quantifies the similarity between UAVs' local feature extractors using an affinity matrix, facilitating knowledge sharing and enhancing the robustness of local models. By employing cross-round feature fusion, FIDSUS mitigates the forgetting problem caused by data heterogeneity, improving detection accuracy in complex scenarios. The global classifier, trained on fused feature representations, further boosts generalization performance. Experimental results demonstrate FIDSUS's superior performance compared to existing FL approaches, achieving an average accuracy improvement of 4% to 34% in large-scale scenarios. FIDSUS exhibits exceptional robustness and accuracy in dynamic client environments while maintaining competitive training efficiency.
+- UV (see https://docs.astral.sh/uv/getting-started/installation/)
+- OS: Linux/macOS recommended (bash scripts)
 
-
-## Dependencies
-
-This project requires the following dependencies to be installed:
-
-### Conda Channels
-
-Make sure you have the following conda channels enabled:
-
-- `pytorch`
-- `nvidia`
-- `defaults`
-
-### Packages
-
-The following packages are required:
-
-- `pip==22`
-- `pandas`
-- `scikit-learn`
-- `scipy`
-- `ujson`
-- `h5py`
-- `seaborn`
-- `matplotlib`
-
-- `torch==2.0.1`
-- `torchaudio`
-- `torchtext`
-- `torchvision`
-- `calmsize`
-- `memory-profiler`
-- `opacus`
-- `portalocker`
-- `cvxpy`
-
-### Installation
-
-To install all dependencies, you can create a conda environment using the provided `env.yaml` file:
+Setup:
 
 ```bash
-conda env create -f env.yaml
+uv sync
+source .venv/bin/activate
 ```
 
-## Dataset
+## Dataset layout
 
-The dataset used for experimentation is the NSL-KDD and UNSW-NB15 dataset. We have pre-partitioned the USNW-NB15 dataset into 50 subsets according to a Dirichlet distribution to facilitate training. You can modify the partitioning method by adjusting the parameters in the `generate_unsw.py` file.
+The code expects per-client `.npz` files under:
 
-## Core Components
+```
+dataset/<DATASET_NAME>/
+  train/
+    0.npz 1.npz ... (one file per client)
+  test/
+    0.npz 1.npz ...
+```
 
-The core components of this project, which are central to the algorithms discussed in our paper, are implemented in the following files:
+Each `.npz` should contain a dict-like object with keys:
 
+* `x`: features (float-compatible)
+* `y`: labels (int)
 
-- **Client Implementation**: `system/flcore/clients/clientFIDSUS.py`
-- **Server Implementation**: `system/flcore/servers/serverFIDSUS.py`
+Data is loaded via `simulation/utils/data_utils.py` (`read_client_data_un`).
 
-## Running the Project
+Important: `-data/--dataset` must match the folder name exactly (case-sensitive on Linux).
 
-To run the project, navigate to the `system` directory and execute the following command:
+## Supported algorithms
+
+Select via `-algo/--algorithm`:
+
+* `FedAvg`
+* `FedProx`
+* `FedProto`
+* `MOON`
+* `GPFL`
+* `FedGH`
+* `FedAvgDBE`
+* `FIDSUS`
+
+(See `simulation/flcore/servers/`.)
+
+## Model selection by dataset
+
+Select via `-m/--model`:
+
+* For `NSLKDD` and `UNSW`: use `1dcnn`
+* For `FashionMNIST` and `mnist`: use `2dcnn` or `microvit`
+
+Examples:
+
+* Tabular intrusion detection datasets (feature vectors): `-m 1dcnn`
+* Image datasets: `-m 2dcnn` or `-m microvit`
+
+## Key runtime knobs
+
+Common flags (see `main.py`):
+
+* `-data` / `--dataset`: dataset name (folder under `dataset/`)
+* `-algo` / `--algorithm`: FL algorithm
+* `-m` / `--model`: `1dcnn`, `2dcnn`, `microvit`
+* `-nc` / `--num_clients`: total clients (must match number of per-client files)
+* `-jr` / `--join_ratio`: fraction of clients selected each round
+* `-car` / `--client_activity_rate`: fraction of selected clients that are active each round
+* `-gr` / `--global_rounds`: number of communication rounds
+* `-ls` / `--local_epochs`: local epochs per round
+* `-dev` / `--device`: `cuda` or `cpu`
+* `-did` / `--device_id`: CUDA device id (string)
+
+Note on `client_activity_rate`: internally it uses `int(client_activity_rate * current_num_join_clients)`. If this becomes 0, training will break. Ensure `client_activity_rate * (num_clients * join_ratio) >= 1`.
+
+## Running sweeps with `run.sh`
+
+`run.sh` is a simple nested loop over:
+
+* `algos`
+* `datasets`
+* `client_activity_rates`
+
+Edit these arrays to match your desired sweep.
+
+Current example (image datasets + MicroViT):
 
 ```bash
-bash run.sh
+algos=("FedAvg" "FIDSUS" "FedProx")
+datasets=("mnist" "FashionMNIST")
+client_activity_rates=("0.6" "0.8" "1")
+model="microvit"
 ```
 
+## Logging all experiments
 
+To store all stdout outputs into a log file:
+
+```bash
+bash run.sh > result.log 2>&1
+```
+
+## Generating figures from logs
+
+After you have a `.log`, generate figures with:
+
+```bash
+python visualizer.py --logs result.log --out_dir results
+```
+
+What you get:
+
+* One figure per (algorithm, dataset)
+* Multiple curves within each figure corresponding to different `client_activity_rate` values
+
+Figures will be written to `results/` as:
+
+```
+<dataset>_<algorithm>_CAR_compare.png
+```
